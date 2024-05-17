@@ -1,11 +1,13 @@
+use tokio::net::{TcpListener, TcpStream};
+
 use anyhow::Result;
 use local_ip_address::local_ip;
 use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
+use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let mdns = ServiceDaemon::new().expect("failed to create daemon");
-
     let service_type = "_dolphin._tcp.local.";
     let receiver = mdns.browse(service_type).expect("failed to browse");
 
@@ -14,7 +16,6 @@ async fn main() -> Result<()> {
             match event {
                 ServiceEvent::ServiceResolved(info) => {
                     println!("new service resolved at {:?}", info);
-                    println!("address is: {:?}", info.get_addresses_v4());
                 }
                 other_event => {
                     println!("Received other event: {:?}", &other_event);
@@ -24,22 +25,36 @@ async fn main() -> Result<()> {
     });
 
     let ip = local_ip()?.to_string();
+    let port = 5200;
     let properties = [("running", "true")];
 
     let service = ServiceInfo::new(
         service_type,
-        "oh my fwicking gyatt",
+        "dolphin",
         &format!("{ip}.local."),
-        ip,
-        5200,
+        &ip,
+        port,
         &properties[..],
-    )
-    .unwrap();
+    )?;
 
     mdns.register(service)
         .expect("Failed to register our service");
-    std::thread::sleep(std::time::Duration::from_secs(1000));
-    mdns.shutdown().unwrap();
 
-    Ok(())
+    let listener = TcpListener::bind(format!("{}:{}", ip, port)).await?;
+
+    loop {
+        let (socket, _) = listener.accept().await?;
+
+        tokio::spawn(async move {
+            // Process each socket concurrently.
+            info!("new connection detected!");
+            process(socket).await
+        });
+    }
+}
+
+async fn process(stream: TcpStream) {
+    loop {
+        println!("yaya");
+    }
 }
