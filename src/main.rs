@@ -1,22 +1,24 @@
 use anyhow::Result;
+use dolphin::dolphin::{get_bssid, request_location};
 use local_ip_address::local_ip;
 use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{info, info_span, Instrument};
+use tracing::{debug, debug_span, error, info, Instrument};
 use tracing_subscriber::fmt;
 
 use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let format = fmt::format().pretty();
+    request_location();
+    let format = fmt::format();
     tracing_subscriber::fmt().event_format(format).init();
 
     let mdns = ServiceDaemon::new().expect("failed to create daemon");
     let service_type = "_dolphin._tcp.local.";
     let receiver = mdns.browse(service_type).expect("failed to browse");
 
-    let browse_span = info_span!("browse");
+    let browse_span = debug_span!("browse");
 
     tokio::spawn(
         async move {
@@ -24,9 +26,14 @@ async fn main() -> Result<()> {
                 match event {
                     ServiceEvent::ServiceResolved(info) => {
                         info!("new service resolved: {:?}", info);
+                        error!(
+                            "can connect to the service at {:?} and port {}",
+                            info.get_addresses(),
+                            info.get_port()
+                        )
                     }
-                    other_event => {
-                        info!("received other event: {:?}", &other_event);
+                    _other_event => {
+                        // info!("received other event: {:?}", &other_event);
                     }
                 }
             }
@@ -60,6 +67,9 @@ async fn main() -> Result<()> {
     }
 }
 
+/// Handles the connection to the network service
+///
+/// Expects the client to provide (ip, port) that it can connect to and send its current location
 async fn process(_stream: TcpStream) {
     std::thread::sleep(Duration::from_secs(100));
 }
