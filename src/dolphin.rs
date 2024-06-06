@@ -2,42 +2,40 @@ use anyhow::Result;
 use tokio::net::TcpListener;
 use tokio::process::Command;
 
+use crate::error::NetworkError;
+
 struct Network {
     /// The last measured BSSID of laptop
     bssid: String,
-    /// Signfies whether there is a disparity between server's BSSID and laptops's current one
-    disparity: bool,
 }
 
 pub async fn smart_update() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let port = listener.local_addr()?.port();
-    let network = Network::new();
+    let mut network = Network::new();
 
-    tokio::spawn(async move {
-        loop {
-            let (socket, _) = listener
-                .accept()
-                .await
-                .expect("failed to accept connection");
-            tokio::spawn(network);
-        }
-    });
+    let _ = Command::new("monitor").arg(format!("{}", port)).spawn();
 
-    Command::new("monitor").arg(format!("{}", port));
+    loop {
+        let _ = listener
+            .accept()
+            .await
+            .expect("failed to accept connection");
 
-    Ok(())
+        network.refresh_location().await?;
+    }
 }
 
 impl Network {
     pub fn new() -> Self {
         Self {
             bssid: String::new(),
-            disparity: false,
         }
     }
-    /// Gets the BSSID of the currently connected router and stores it if it is different
-    pub async fn get_bssid(&mut self) -> Result<()> {
+
+    /// Gets the BSSID of the currently connected router and stores it and returns true if it is
+    /// different.
+    pub async fn get_bssid(&mut self) -> Result<bool, NetworkError> {
         let output = String::from_utf8(
             Command::new("sudo")
                 .args(["wdutil", "info"])
@@ -47,7 +45,7 @@ impl Network {
         )?;
 
         let Some(pos) = output.find("BSSID") else {
-            anyhow::bail!("wdutil doesn't display BSSID anymore...")
+            return Err(NetworkError::WDUtilChanged);
         };
 
         let bssid = String::from_utf8(
@@ -61,14 +59,27 @@ impl Network {
         )?;
 
         if bssid == "None" {
-            anyhow::bail!("returned BSSID is malformed, recieved {}", bssid)
+            return Err(NetworkError::NoConnection);
+        } else if bssid.len() != 17 {
+            return Err(NetworkError::MalformedBssid(bssid));
         }
 
         if bssid != self.bssid {
             self.bssid = bssid;
-            self.disparity = true;
+            return Ok(true);
         }
 
-        Ok(())
+        Ok(false)
+    }
+
+    pub async fn refresh_location(&mut self) -> Result<()> {
+        match self.get_bssid().await {
+            Ok(true) => {
+                // TODO send request to server with new location
+                todo!()
+            }
+            Err(NetworkError::NoConnection) | Ok(false) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
     }
 }
