@@ -11,6 +11,7 @@ use std::time::Duration;
 #[tokio::main]
 async fn main() -> Result<()> {
     get_bssid().await;
+    println!("{:?}", std::env::var("OUT_DIR").unwrap());
 
     let format = fmt::format();
     tracing_subscriber::fmt().event_format(format).init();

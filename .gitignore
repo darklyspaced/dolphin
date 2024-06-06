@@ -1,2 +1,5 @@
 /target
+./src/monitor/.build/
 Cargo.lock
+.*
+!.gitignore
