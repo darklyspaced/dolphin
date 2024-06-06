@@ -1,16 +1,17 @@
 use anyhow::Result;
-use dolphin::dolphin::{get_bssid, request_location};
+use dolphin::dolphin::get_bssid;
 use local_ip_address::local_ip;
 use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug, debug_span, error, info, Instrument};
+use tracing::{debug_span, error, info, Instrument};
 use tracing_subscriber::fmt;
 
 use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    request_location();
+    get_bssid().await;
+
     let format = fmt::format();
     tracing_subscriber::fmt().event_format(format).init();
 
@@ -19,7 +20,6 @@ async fn main() -> Result<()> {
     let receiver = mdns.browse(service_type).expect("failed to browse");
 
     let browse_span = debug_span!("browse");
-
     tokio::spawn(
         async move {
             while let Ok(event) = receiver.recv_async().await {
@@ -32,9 +32,7 @@ async fn main() -> Result<()> {
                             info.get_port()
                         )
                     }
-                    _other_event => {
-                        // info!("received other event: {:?}", &other_event);
-                    }
+                    _other_event => {}
                 }
             }
         }

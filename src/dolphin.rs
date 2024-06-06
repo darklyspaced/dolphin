@@ -1,28 +1,28 @@
-use objc2_core_location::CLLocationManager;
-use objc2_core_wlan::CWWiFiClient;
-//use objc2_foundation::{ns_string, NSString};
-use tracing::info;
+use anyhow::Result;
+use tokio::process::Command;
 
-struct Bssid([u8; 6]);
-/// Needs access to location to get BSSID since there are privacy concerns
-/// maybe could notify server that it doesn't have permission so that IT can see if a laptop
-/// doesn't have permissions?
-pub fn get_bssid() {
-    unsafe {
-        let client = CWWiFiClient::sharedWiFiClient();
-        if let Some(interface) = client.interface() {
-            println!("{:?}", interface.noiseMeasurement());
-        }
-    }
-}
+pub async fn get_bssid() -> Result<String> {
+    let output = String::from_utf8(
+        Command::new("sudo")
+            .args(["wdutil", "info"])
+            .output()
+            .await?
+            .stdout,
+    )?;
 
-pub fn request_location() {
-    unsafe {
-        if CLLocationManager::locationServicesEnabled_class() {
-            info!("location services are enabled")
-        } else {
-            let loc_manager = CLLocationManager::new();
-            loc_manager.requestAlwaysAuthorization();
-        }
-    }
+    let Some(pos) = output.find("BSSID") else {
+        anyhow::bail!("wdutil doesn't display BSSID anymore...")
+    };
+
+    let bssid = String::from_utf8(
+        output
+            .bytes()
+            .skip(pos)
+            .skip_while(|x| *x != b':')
+            .skip(2)
+            .take_while(|x| !x.is_ascii_whitespace())
+            .collect::<Vec<_>>(),
+    )?;
+
+    Ok(bssid)
 }
