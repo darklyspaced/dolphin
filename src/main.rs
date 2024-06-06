@@ -1,5 +1,5 @@
 use anyhow::Result;
-use dolphin::dolphin::get_bssid;
+use dolphin::dolphin::tick_update;
 use local_ip_address::local_ip;
 use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 use tokio::net::{TcpListener, TcpStream};
@@ -10,8 +10,9 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    get_bssid().await;
-    println!("{:?}", std::env::var("OUT_DIR").unwrap());
+    dotenvy::dotenv().expect(".env file not found");
+
+    //tokio::spawn(tick_update());
 
     let format = fmt::format();
     tracing_subscriber::fmt().event_format(format).init();

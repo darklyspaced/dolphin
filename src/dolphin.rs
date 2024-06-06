@@ -1,27 +1,26 @@
 use anyhow::Result;
-use tokio::net::TcpListener;
+use reqwest::Client;
 use tokio::process::Command;
+use tokio::time;
 
 use crate::error::NetworkError;
+
+use std::env;
+use std::time::Duration;
 
 struct Network {
     /// The last measured BSSID of laptop
     bssid: String,
+    mac: String,
+    client: Client,
 }
 
-pub async fn smart_update() -> Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:0").await?;
-    let port = listener.local_addr()?.port();
+pub async fn tick_update() -> Result<()> {
     let mut network = Network::new();
-
-    let _ = Command::new("monitor").arg(format!("{}", port)).spawn();
+    let mut interval = time::interval(Duration::from_secs(300));
 
     loop {
-        let _ = listener
-            .accept()
-            .await
-            .expect("failed to accept connection");
-
+        interval.tick().await;
         network.refresh_location().await?;
     }
 }
@@ -30,6 +29,8 @@ impl Network {
     pub fn new() -> Self {
         Self {
             bssid: String::new(),
+            mac: mac_address::get_mac_address().unwrap().unwrap().to_string(),
+            client: Client::new(),
         }
     }
 
@@ -75,8 +76,18 @@ impl Network {
     pub async fn refresh_location(&mut self) -> Result<()> {
         match self.get_bssid().await {
             Ok(true) => {
-                // TODO send request to server with new location
-                todo!()
+                let client = self.client.clone();
+                let server = env::var("SERVER")?;
+
+                let message = format!("{}\n{}", self.mac, self.bssid);
+
+                client
+                    .post(format!("{}/location", server))
+                    .body(message)
+                    .send()
+                    .await?;
+
+                Ok(())
             }
             Err(NetworkError::NoConnection) | Ok(false) => Ok(()),
             Err(e) => Err(e.into()),

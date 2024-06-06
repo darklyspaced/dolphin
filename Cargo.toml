@@ -7,8 +7,11 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.82"
+dotenvy = "0.15.7"
 local-ip-address = "0.6.1"
+mac_address = "1.1.7"
 mdns-sd = "0.11.0"
+reqwest = "0.12.4"
 thiserror = "1.0.61"
 tokio = { version = "1.37.0", features = ["full"] }
 tower = "0.4.13"
