@@ -1,63 +1,41 @@
 use anyhow::Result;
-use dolphin::dolphin::tick_update;
+use dolphin::network::{get_bssid, get_mac, tick_update};
 use local_ip_address::local_ip;
-use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
-use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug_span, error, info, Instrument};
+use mdns_sd::{ServiceDaemon, ServiceInfo};
+use tokio::{
+    io::AsyncWriteExt,
+    net::{TcpListener, TcpStream},
+};
+use tracing::info;
 use tracing_subscriber::fmt;
-
-use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenvy::dotenv().expect(".env file not found");
-
-    //tokio::spawn(tick_update());
 
     let format = fmt::format();
     tracing_subscriber::fmt().event_format(format).init();
 
     let mdns = ServiceDaemon::new().expect("failed to create daemon");
     let service_type = "_dolphin._tcp.local.";
-    let receiver = mdns.browse(service_type).expect("failed to browse");
-
-    let browse_span = debug_span!("browse");
-    tokio::spawn(
-        async move {
-            while let Ok(event) = receiver.recv_async().await {
-                match event {
-                    ServiceEvent::ServiceResolved(info) => {
-                        info!("new service resolved: {:?}", info);
-                        error!(
-                            "can connect to the service at {:?} and port {}",
-                            info.get_addresses(),
-                            info.get_port()
-                        )
-                    }
-                    _other_event => {}
-                }
-            }
-        }
-        .instrument(browse_span),
-    );
 
     let ip = local_ip()?.to_string();
-    let port = 5200;
-    let properties = [("running", "true")];
+    let port = 5201;
+    let properties = [("mac", get_mac()?)];
 
     let service = ServiceInfo::new(
         service_type,
-        "dolphin",
+        &get_mac()?,
         &format!("{ip}.local."),
         &ip,
         port,
         &properties[..],
     )?;
 
-    mdns.register(service)
-        .expect("Failed to register our service");
+    mdns.register(service).expect("Failed to register service");
 
     let listener = TcpListener::bind(format!("{}:{}", ip, port)).await?;
+    tokio::spawn(tick_update());
 
     loop {
         let (socket, peer) = listener.accept().await?;
@@ -68,8 +46,13 @@ async fn main() -> Result<()> {
 }
 
 /// Handles the connection to the network service
-///
-/// Expects the client to provide (ip, port) that it can connect to and send its current location
-async fn process(_stream: TcpStream) {
-    std::thread::sleep(Duration::from_secs(100));
+async fn process(stream: TcpStream) -> Result<()> {
+    let peer = stream.peer_addr()?;
+
+    let mut stream = TcpStream::connect(peer).await?;
+    let buf = get_bssid().await?.to_string();
+
+    stream.write_all(buf.as_bytes()).await?;
+
+    Ok(())
 }
