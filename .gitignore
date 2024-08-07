@@ -1,4 +1,5 @@
 /target
+/bin
 ./src/monitor/.build/
 Cargo.lock
 .*

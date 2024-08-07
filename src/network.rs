@@ -16,13 +16,12 @@ pub struct Network {
 }
 
 /// Updates the location of laptop every X seconds
-pub async fn tick_update() -> Result<()> {
-    let mut network = Network::new();
+pub async fn tick_update(mut net: Network) -> Result<()> {
     let mut interval = time::interval(Duration::from_secs(300));
 
     loop {
         interval.tick().await;
-        network.refresh_location().await?;
+        net.refresh_location().await?;
     }
 }
 
@@ -78,6 +77,14 @@ impl Network {
             mac: get_mac().expect("failed to get mac address"),
             client: Client::new(),
         }
+    }
+
+    pub async fn register(&self) -> Result<()> {
+        let server = env::var("SERVER")?;
+        let url = format!("{}/register/{}", server, self.mac);
+        reqwest::get(url).await?;
+
+        Ok(())
     }
 
     /// Ascertains whether the bssid has changed since last tick

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use dolphin::network::{get_bssid, get_mac, tick_update};
+use dolphin::network::{get_bssid, get_mac, tick_update, Network};
 use local_ip_address::local_ip;
 use mdns_sd::{ServiceDaemon, ServiceInfo};
 use tokio::{
@@ -32,10 +32,17 @@ async fn main() -> Result<()> {
         &properties[..],
     )?;
 
+    // register the network service
     mdns.register(service).expect("Failed to register service");
 
     let listener = TcpListener::bind(format!("{}:{}", ip, port)).await?;
-    tokio::spawn(tick_update());
+
+    // sets up the laptop by registering it with server and giving incremental updates
+    // PERF: don't really need the laptop to load balance because it is very unlikely that a bunch
+    // laptops will all turn on at the same time
+    let network = Network::new();
+    network.register().await?;
+    tokio::spawn(tick_update(network));
 
     loop {
         let (socket, peer) = listener.accept().await?;
@@ -45,13 +52,9 @@ async fn main() -> Result<()> {
     }
 }
 
-/// Handles the connection to the network service
-async fn process(stream: TcpStream) -> Result<()> {
-    let peer = stream.peer_addr()?;
-
-    let mut stream = TcpStream::connect(peer).await?;
+/// Connects to client and writes laptop's location back
+async fn process(mut stream: TcpStream) -> Result<()> {
     let buf = get_bssid().await?.to_string();
-
     stream.write_all(buf.as_bytes()).await?;
 
     Ok(())
